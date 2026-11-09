@@ -111,7 +111,7 @@ scan target points, view orientation, numerals against the specification text.
 
 ## Related
 
-Need the drawings themselves? [FigSheet](https://figsheet.pages.dev) turns a STEP CAD file into USPTO-style sheets
+Need the drawings themselves? [FigSheet](https://figsheet.com) turns a STEP CAD file into USPTO-style sheets
 and checks every sheet with drawlint. Ordering is open: upload a STEP file for a free watermarked preview, then
 $49 per file for the full set (vector PDF, SVG per sheet, check report).
 
