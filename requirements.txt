@@ -1,0 +1,2 @@
+# PDF input only; SVG checks need nothing beyond the Python standard library.
+pypdf==6.21.4

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patent Drawing Sheet Check</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="Free check of patent drawing sheets (SVG or PDF) against the formality rules of 37 CFR 1.84. Automated formality check only, not legal advice.">
+<style>
+:root{--bg:#f7f7f8;--fg:#15171a;--muted:#5b616b;--line:#d5d8dd;--panel:#ffffff;--err:#b42318;--adv:#9a6200;--ok:#1d6b3a;--focus:#1f4fd1}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--fg:#eceef1;--muted:#a3a9b3;--line:#2c3036;--panel:#191c20;--err:#ff7b6e;--adv:#f0b54a;--ok:#5fd08a;--focus:#7aa2ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 "Helvetica Neue",Helvetica,Arial,system-ui,sans-serif}
+main{max-width:960px;margin:0 auto;padding:40px 16px 64px}
+h1{font-size:28px;line-height:1.2;margin:0 0 8px;font-weight:600;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:0 0 4px;max-width:68ch}
+.disclaimer{margin:0 0 32px;font-weight:600}
+.drop{display:grid;gap:12px;border:1px solid var(--line);background:var(--panel);padding:24px}
+.drop.over{border-color:var(--focus)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+label.file{display:inline-block;border:1px solid var(--fg);padding:10px 16px;cursor:pointer;font-weight:600}
+label.file:active{transform:scale(.98)}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+input[type=file]:focus-visible+label.file,select:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+select,button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);padding:9px 12px}
+button{border-color:var(--fg);font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+.hint{color:var(--muted);font-size:14px;margin:0}
+#status{min-height:24px;margin:24px 0 8px;font-weight:600}
+#status.err{color:var(--err)}#status.ok{color:var(--ok)}
+.summary{display:flex;flex-wrap:wrap;gap:24px;border-top:1px solid var(--line);padding:12px 0;margin:0}
+.summary div{min-width:120px}.summary dt{color:var(--muted);font-size:13px}.summary dd{margin:0;font-weight:600}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th,td{text-align:left;padding:10px 8px;border-top:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--muted);font-weight:600}
+td.sev,td.rule{white-space:nowrap}td.sev{font-weight:600}
+.error{color:var(--err)}.advisory{color:var(--adv)}
+td code{font-size:13px}
+a{color:inherit}
+.ex{color:var(--muted);font-size:13px;display:block}
+footer{margin-top:48px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:14px;max-width:72ch}
+@media (max-width:600px){th:nth-child(3),td:nth-child(3){display:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Patent drawing sheet check</h1>
+<p class="lede">Check a drawing sheet (SVG) or a set of sheets (PDF, one sheet per page) against the drawing formality rules of 37 CFR 1.84: sheet size, margins, black ink, line weight, text height, sheet numbers and FIG. labels. Free while in test.</p>
+<p class="disclaimer">Automated formality check only, not legal advice.</p>
+
+<form id="f" class="drop" novalidate>
+  <div class="row">
+    <input id="file" type="file" accept=".svg,image/svg+xml,.pdf,application/pdf">
+    <label class="file" for="file">Choose SVG or PDF</label>
+    <span id="fname" class="hint">or drop the file here</span>
+  </div>
+  <div class="row">
+    <label for="profile">Sheet size</label>
+    <select id="profile">
+      <option value="auto">Detect</option>
+      <option value="letter">US letter (8 1/2 x 11 in)</option>
+      <option value="a4">A4</option>
+    </select>
+    <button id="go" type="submit" disabled>Check</button>
+  </div>
+  <p class="hint">Up to 20 MB and 100 pages. The file is checked in memory and not stored.</p>
+</form>
+
+<div id="status" role="status" aria-live="polite"></div>
+<div id="out"></div>
+
+<footer>
+  <p>Errors are formality problems under the rule cited. Advisories are worth a look but may be fine. Passing does not guarantee acceptance, and the check may miss problems or flag ones that are not there. PDF pages are read as drawn vector content; a scanned PDF is one image per page and its content cannot be checked.</p>
+  <p>Rule text: <a href="https://www.ecfr.gov/current/title-37/section-1.84" rel="noopener">37 CFR 1.84</a>.</p>
+</footer>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const MAX = 20 * 1024 * 1024;
+let file = null;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function pick(f) {
+  file = f || null;
+  $("#fname").textContent = file ? file.name : "or drop the file here";
+  $("#go").disabled = !file;
+  setStatus("", "");
+  $("#out").innerHTML = "";
+}
+function isPdf(f) { return f.type === "application/pdf" || /\.pdf$/i.test(f.name); }
+function setStatus(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls; }
+$("#file").addEventListener("change", e => pick(e.target.files[0]));
+const drop = $("#f");
+["dragenter","dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => pick(e.dataTransfer.files[0]));
+drop.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!file) return;
+  if (file.size > MAX) { setStatus("That file is larger than 20 MB.", "err"); return; }
+  $("#go").disabled = true;
+  setStatus("Checking...", "");
+  $("#out").innerHTML = "";
+  try {
+    const body = await file.arrayBuffer();
+    const r = await fetch("/v1/lint?profile=" + encodeURIComponent($("#profile").value),
+      { method: "POST", headers: { "Content-Type": isPdf(file) ? "application/pdf" : "image/svg+xml" }, body });
+    const data = await r.json();
+    if (!r.ok) { setStatus("Could not check this file: " + (data.error || r.status), "err"); return; }
+    render(data);
+  } catch (err) {
+    setStatus("The checker could not be reached. Try again in a moment.", "err");
+  } finally {
+    $("#go").disabled = !file;
+  }
+});
+function table(list) {
+  if (!list.length) return "";
+  const order = { error: 0, advisory: 1 };
+  list.sort((a, b) => order[a.severity] - order[b.severity]);
+  let h = `<table><thead><tr><th>Severity</th><th>Finding</th><th>Rule</th></tr></thead><tbody>`;
+  for (const f of list) {
+    const ex = f.examples && f.examples.length ? `<span class="ex">${esc(f.examples.join(", "))}</span>` : "";
+    const n = f.count > 1 ? ` (${f.count} times)` : "";
+    const rule = f.rule && f.rule !== "-" ? `<a href="https://www.ecfr.gov/current/title-37/section-1.84" rel="noopener">${esc(f.rule.replace("37 CFR ", ""))}</a>` : "";
+    h += `<tr><td class="sev ${f.severity}">${f.severity === "error" ? "Error" : "Advisory"}</td>
+      <td>${esc(f.message)}${esc(n)}${ex}</td><td class="rule">${rule}</td></tr>`;
+  }
+  return h + `</tbody></table>`;
+}
+function render(d) {
+  const many = d.sheets.length > 1;
+  // with one sheet, "only one FIG. label in the set" says nothing useful
+  const setF = d.set_findings.filter(f => many || f.code !== "single-view");
+  const errs = d.errors;
+  setStatus((errs ? `${errs} formality error${errs > 1 ? "s" : ""} found` : "No formality errors found")
+    + (many ? ` on ${d.sheets.length} sheets.` : "."), errs ? "err" : "ok");
+  let h = "";
+  for (const s of d.sheets) {
+    const pg = s.page;
+    h += `${many ? `<h2 style="font-size:18px;margin:32px 0 0">${esc(s.file)}</h2>` : ""}<dl class="summary">
+      <div><dt>Sheet</dt><dd>${esc(pg.size ? pg.size.toUpperCase() : "Unknown size")} ${esc(pg.orientation || "")}</dd></div>
+      <div><dt>Errors</dt><dd class="${s.errors ? "error" : ""}">${s.errors}</dd></div>
+      <div><dt>Advisories</dt><dd>${s.advisories}</dd></div>
+      <div><dt>Units read as</dt><dd>${esc(pg.units)}</dd></div></dl>` + table(s.findings.slice());
+  }
+  if (setF.length) h += `<h2 style="font-size:18px;margin:32px 0 0">${many ? "Whole set" : "Sheet set"}</h2>` + table(setF.slice());
+  h += `<p class="hint" style="margin-top:16px">${esc(d.disclaimer)}</p>`;
+  $("#out").innerHTML = h;
+}
+</script>
+</body>
+</html>
